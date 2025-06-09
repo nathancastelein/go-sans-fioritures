@@ -30,7 +30,7 @@ func NewServer(
 	mux.HandleFunc("GET /stones/{name}", server.getStoneByName)
 	mux.HandleFunc("POST /stones/report", server.reportSuspiciousActivity)
 
-	chain := MiddlewareChain(LoggerMiddleware, server.AuthMiddleware)
+	chain := MiddlewareChain(RecoverMiddleware, LoggerMiddleware, server.AuthMiddleware)
 	server.Handler = chain(mux)
 
 	return server

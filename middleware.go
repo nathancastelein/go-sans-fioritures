@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 )
 
@@ -11,8 +12,7 @@ type Middleware func(http.Handler) http.Handler
 
 func MiddlewareChain(middlewares ...Middleware) Middleware {
 	return func(next http.Handler) http.Handler {
-		for i := len(middlewares) - 1; i >= 0; i-- {
-			middleware := middlewares[i]
+		for _, middleware := range slices.Backward(middlewares) {
 			next = middleware(next)
 		}
 		return next
@@ -29,7 +29,7 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 
 		user, err := s.login.LogUser(r.Context(), username, password)
 		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
 		slog.Info("user logged", "user", user)
@@ -56,6 +56,22 @@ func LoggerMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 
-		logger.Info("request end", slog.Int("elapsed_time_ms", int(time.Since(startedAt).Milliseconds())))
+		logger.Info("request end", slog.Duration("elapsed_time", time.Since(startedAt)))
+	})
+}
+
+func RecoverMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			err := recover()
+			if err != nil {
+				slog.Error("recover from panic", slog.Any("error", err))
+				w.Header().Set("Content-Type", "application/plain")
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(http.StatusText(http.StatusInternalServerError)))
+			}
+		}()
+
+		next.ServeHTTP(w, r)
 	})
 }

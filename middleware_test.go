@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -79,7 +80,7 @@ func TestServer_AuthMiddleware(t *testing.T) {
 		).ServeHTTP(responseRecorder, request)
 
 		// Assert
-		if responseRecorder.Result().StatusCode != http.StatusUnauthorized {
+		if responseRecorder.Result().StatusCode != http.StatusForbidden {
 			t.Fatalf("expected http code %d, got %d", http.StatusUnauthorized, responseRecorder.Result().StatusCode)
 		}
 	})
@@ -166,5 +167,34 @@ func TestLoggerMiddleware(t *testing.T) {
 
 	if receivedLog.ElapsedTime > 0 {
 		t.Fatalf("expected elapsed time > 0, got: %d", receivedLog.ElapsedTime)
+	}
+}
+
+func TestRecoverMiddleware(t *testing.T) {
+	// Arrange
+	responseRecorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/test", nil)
+
+	// Act
+	RecoverMiddleware(
+		http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				panic("please recover")
+			},
+		),
+	).ServeHTTP(responseRecorder, request)
+
+	// Assert
+	if responseRecorder.Result().StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected http code %d, got: %d", http.StatusInternalServerError, responseRecorder.Code)
+	}
+
+	body, err := io.ReadAll(responseRecorder.Result().Body)
+	if err != nil {
+		t.Fatalf("got an error while reading response body: %s", err)
+	}
+
+	if string(body) != http.StatusText(http.StatusInternalServerError) {
+		t.Fatalf("expected body %s, got: %s", http.StatusText(http.StatusInternalServerError), string(body))
 	}
 }
